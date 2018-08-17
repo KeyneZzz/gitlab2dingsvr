@@ -1,5 +1,12 @@
 # gitlab钉钉通知服务
 
+## 简介
+
+如果你的开发团队使用gitlab作为托管仓库、开发周期管理和持续集成工具，那么肯定会希望gitlab的事件（例如issue回复、mergerequest评论、pipeline状态等）能够及时通知到相关成员，gitlab虽然有相关的提醒，但是基本遵照老外的工作惯例，使用邮件进行通知
+如果你的团队同时使用钉钉作为日常的IM工具的话，本项目可以帮助你将gitlab事件通知到相关人员的钉钉上
+
+项目使用了gitlab的webhook，gitlab将事件消息发送到本服务上，再由本服务调用钉钉开放接口将消息发送到指定个人
+
 ## 文件结构
 
 * gitlab2ding:shell快捷命令，启停和重启，需要添加执行权限
@@ -11,15 +18,15 @@
 ### config.ini 文件【必须】
 
 		[config]
-		debug = 
-		debuger = 
-		agentid = 
-		port = 
-		corpid = 
-		corpsecret = 
-		gitlabtoken =
-		gitlaburl =
-		webhookurl =
+		debug = 0
+		debuger = 0123456789
+		agentid = 0123456789
+		port = 30000
+		corpid = 0123456789
+		corpsecret = 12345qwerty
+		gitlabtoken = 12345qwerty
+		gitlaburl = http://gitlab.yours.com
+		webhookurl = http://gitlab.yours.com/gitlab2dingsvr
 
 -----------
 	* debug :
