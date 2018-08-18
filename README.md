@@ -11,7 +11,7 @@
 
 * gitlab2ding:shell快捷命令，启停和重启，需要添加执行权限
 * gitlab2dingsvr.py:服务主程序，接受webhook并转为钉钉消息发送，接收并处理账号绑定
-* labFetchUser.py:获取全体成员钉钉uid，需要手动运行
+* labFetchUser.py:获取全体成员钉钉uid
 
 ## 配置
 
@@ -54,8 +54,7 @@
 
 1. 配置config.ini和gitlab.rb
 2. gitlab2ding添加运行权限
-3. 运行一次labFetchUser.py:`python3 labFetchUser.py`
-4. 启动服务:`./gitlab2ding start`
+3. 启动服务:`./gitlab2ding start`
 
 ## 使用
 

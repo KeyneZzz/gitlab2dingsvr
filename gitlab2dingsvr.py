@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 import urllib 
 from urllib import request,parse
 from time import localtime, strftime
-import json,configparser,sqlite3
+import json,configparser,sqlite3,os
 
 
 config = configparser.ConfigParser()
@@ -42,7 +42,12 @@ def read_list_from_db(list_type_str):
     log(list_type_str+" updated from sqlite db")
     return db_list_dict
 
-
+try:
+    os.system("python3 labFetchUser.py")
+except:
+    log("labFetchUser fail")
+else:
+    log("labFetchUser success")
 git_members = read_list_from_db("git_members")
 lab_members = read_list_from_db("lab_members")
 
@@ -621,6 +626,12 @@ class gitlab2dingsvr_RequestHandler(BaseHTTPRequestHandler):
                     #ding_user_all = configparser.ConfigParser()
                     #ding_user_all.read("user_all")
                     #ding_user_list = ding_user_all["ding_userid_all"]
+                    try:
+                        os.system("python3 labFetchUser.py")
+                    except:
+                        log("labFetchUser fail")
+                    else:
+                        log("labFetchUser success")
                     ding_user_list = read_list_from_db("ding_user_list")
                     if method_get_req_dict["mobile"] in ding_user_list:
                         method_get_req_dict["dingUid"] = ding_user_list[method_get_req_dict["mobile"]]
