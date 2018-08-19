@@ -291,11 +291,11 @@ class gitlab2dingsvr_RequestHandler(BaseHTTPRequestHandler):
                 if(author_labusername in lab_members):
                     receiver_dingUid = lab_members[author_labusername]#to author
                     log("author "+author_labusername+" get.")
-                if("assignees" in data_json):
-                    if("username" in data_json["assignees"][0]):
-                        if(data_json["assignees"][0]["username"] in lab_members):
-                            receiver_dingUid = receiver_dingUid + "|" + lab_members[data_json["assignees"][0]["username"]]#to assignee
-                            log("assignee "+data_json["assignees"][0]["username"]+" get.")
+                if("assignee" in data_json):
+                    if("username" in data_json["assignee"][0]):
+                        if(data_json["assignee"][0]["username"] in lab_members):
+                            receiver_dingUid = receiver_dingUid + "|" + lab_members[data_json["assignee"][0]["username"]]#to assignee
+                            log("assignee "+data_json["assignee"][0]["username"]+" get.")
                 object_url = data_json["object_attributes"]["url"]
                 log(object_url)
                 merge_req_title = data_json["object_attributes"]["title"]
