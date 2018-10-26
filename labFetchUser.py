@@ -31,13 +31,13 @@ sqc = sqconn.cursor()
 name_list = {}
 for department in data_departments_list:
 	req_dingapi = request.Request("https://oapi.dingtalk.com/user/list?access_token="+access_token+"&department_id="+str(department["id"]))
-	data_from_dingapi = request.urlopen(req_dingapi).read()
-	data = json.loads(data_from_dingapi.decode("utf-8"))
+	data_from_dingapi = request.urlopen(req_dingapi).read().decode("utf-8")
+	data = json.loads(data_from_dingapi)
 	data_userlist = data["userlist"]
 	for user in data_userlist:
 		if not user["name"] in name_list:
-			sqc.execute("INSERT INTO USERS (PHONE,NAME,DINGUID) SELECT '"+user["mobile"]+"', '"+user["name"]+"', '"+user["userid"]+\
-				"' WHERE NOT EXISTS (SELECT * FROM USERS)");
+			sq_add_str="INSERT OR IGNORE INTO USERS (PHONE,NAME,DINGUID) VALUES ('"+user["mobile"]+"', '"+user["name"]+"', '"+user["userid"]+"')"
+			sqc.execute(sq_add_str);
 		name_list[user["name"]] = "added"
 
 sqconn.commit()
