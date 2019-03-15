@@ -53,12 +53,19 @@
 ## 运行
 
 1. 配置config.ini和gitlab.rb
-2. gitlab2ding添加运行权限
-3. 启动服务:`./gitlab2ding start`
+2. 新建一个sqlite数据库（推荐用 SQLiteStudio），文件名设为gitlab2ding.db，然后在里面建一张表，表的名字是USERS，字段配置如图，建好以后放到同个目录下面就好
+![image](https://user-images.githubusercontent.com/6895745/52922595-3115d400-335d-11e9-96b9-30844450e514.png)
+3. gitlab2ding添加运行权限
+4. 启动服务:`./gitlab2ding start`
 
 ## 使用
 
 ### 1.关联钉钉账号
+
+现在可以直接访问 `http://gitlab.yours.com/gitlab2dingsvr?action=linkfront` (改成你自己的webhookurl)
+
+或者使用下方的老方法（实际上就是用html包装了一下）
+
 复制下方链接，并根据自己实际情况修改相应字段：
 * mobile： 必须。你的钉钉注册手机号。
 * username： 必须。你在Gitlab上的**Username（点开右上角头像后第二行@开头的字段，也是你登录时所用的用户名，此项务必检查无误）**
@@ -77,6 +84,7 @@ Gitlab username added.
 ```
 
 ### 2.在project中添加webhook
+目前已经支持新项目自动添加webhook，但已有的项目依然需要手动配置
   1. 请project负责人打开项目页面，在左侧导航栏中打开Settings - Integrations 
   2. 在打开的设置页面中，在第一行的URL添加地址：`http://gitlab.yours.com/gitlab2dingsvr`然后在下方的Trigger选择区域勾选所有消息类型。
   3. 完成后在下方点击Add Webhook即可。
