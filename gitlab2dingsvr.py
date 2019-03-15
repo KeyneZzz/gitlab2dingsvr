@@ -9,17 +9,12 @@ from urllib import request,parse
 from time import localtime, strftime
 import json,configparser,sqlite3,os
 
-
 config = configparser.ConfigParser()
 config.read("config.ini")
-
-#git_members : gitemail = dinguid
-#lab_members : gitlabusername = dinguid
 
 def log(log_str):
     timestamp = strftime("[%d/%b/%Y %H:%M:%S]", localtime())
     print(timestamp + log_str)
-
 
 def read_list_from_db(list_type_str):
     sqconn = sqlite3.connect('gitlab2ding.db')
@@ -29,7 +24,7 @@ def read_list_from_db(list_type_str):
     elif list_type_str == "lab_members":
         user_list_tuple = sqc.execute("SELECT GITLABUSERNAME,DINGUID FROM USERS")
     elif list_type_str == "ding_user_list":
-        user_list_tuple = sqc.execute("SELECT PHONE,DINGUID FROM USERS")
+        user_list_tuple = sqc.execute("SELECT PHONE,DINGUID FROM USERS WHERE GITLABUSERNAME IS NULL")
     db_list_dict = {}
 
     db_user = user_list_tuple.fetchone()
@@ -42,6 +37,8 @@ def read_list_from_db(list_type_str):
     log(list_type_str+" updated from sqlite db")
     return db_list_dict
 
+# some start up work
+
 try:
     os.system("python3 labFetchUser.py")
 except:
@@ -50,6 +47,9 @@ else:
     log("labFetchUser success")
 git_members = read_list_from_db("git_members")
 lab_members = read_list_from_db("lab_members")
+
+print(git_members)
+print(lab_members)
 
 AgentID = config["config"]["agentid"]
 port = int(config["config"]["port"])
@@ -64,6 +64,7 @@ gitlabtoken = config["config"]["gitlabtoken"]
 gitlaburl = config["config"]["gitlaburl"]
 webhookurl = config["config"]["webhookurl"]
 
+# start up finish
 
 def sqlite_linkuser_add(phone_str,value_str,key_str):
     sqconn = sqlite3.connect('gitlab2ding.db')
@@ -87,7 +88,13 @@ def labuid2username(uid_str):
     username = data_for_username["username"]
     return username
 
-def receiverSort(receiver_str):
+def receiverSort(receiver_list):
+    receiver_str = ""
+    if len(receiver_list) > 0 :
+        for receiver in receiver_list :
+            receiver_str=receiver_str + "|" + receiver
+    else:
+        return ""
     if (receiver_str[0]=="|"):
         receiver_str = receiver_str[1:]
     if (debug == "1" ):
@@ -98,7 +105,23 @@ def receiverSort(receiver_str):
         receiver_str = debuger
     return receiver_str
 
+def searchAt(receiver_list,content_str):
+    content_dict = content_str.split("@")
+    for content in content_dict:
+        i=0
+        for c in content:
+            if (ord(c)>=65 and ord(c)<=90) or (ord(c)>=97 and ord(c)<=122):
+                i=i+1
+            else:
+                break
 
+        for key in lab_members.keys():
+            if (i>0 and content[:i]==key):
+                receiver_list.append(lab_members[key])#to at
+                log("at "+key+" get.")
+                break
+
+    return receiver_list
 
 class gitlab2dingsvr_RequestHandler(BaseHTTPRequestHandler):
     # GET
@@ -114,7 +137,7 @@ class gitlab2dingsvr_RequestHandler(BaseHTTPRequestHandler):
 
         data_s = data_b.decode("utf-8")
         data_json = json.loads(data_s)
-        receiver_dingUid = None
+        receiver_dingUid = []
         send_valid=0;
 
         if "event_name" in data_json:
@@ -187,7 +210,7 @@ class gitlab2dingsvr_RequestHandler(BaseHTTPRequestHandler):
                 send_valid = 1
                 log( "pipeline trigger received")
                 if data_json['commit']['author']['email'] in git_members:
-                    receiver_dingUid = git_members[data_json['commit']['author']['email']]
+                    receiver_dingUid.append(git_members[data_json['commit']['author']['email']])
                     log( "committer email:" + data_json['commit']['author']['email'] + " found")
                 status = data_json['object_attributes']['status']
                 commit_msg = data_json['commit']['message']
@@ -195,12 +218,12 @@ class gitlab2dingsvr_RequestHandler(BaseHTTPRequestHandler):
                 log(data_json["project"]["web_url"]+"/pipelines/"+object_id)
                 project_name = data_json['project']['name']
     
-                if receiver_dingUid==None :
+                if len(receiver_dingUid)==0 :
                     send_valid = 0
                 else:
-                    receiver_dingUid = receiverSort(receiver_dingUid)
+                    receiver_dingUid_str = receiverSort(receiver_dingUid)
                     msg2dingapi_json_str=(
-                    "{\"touser\": \""+receiver_dingUid+"\", \"agentid\": \""+AgentID+"\","
+                    "{\"touser\": \""+receiver_dingUid_str+"\", \"agentid\": \""+AgentID+"\","
                     "\"msgtype\": \"markdown\","
                     "\"markdown\": {\"title\": \"最近提交的CI状态变化\","
                     "\"text\": \"## 最近提交的CI状态变化为"+status+" \\n"
@@ -227,35 +250,27 @@ class gitlab2dingsvr_RequestHandler(BaseHTTPRequestHandler):
             elif (data_json['object_kind'] == "issue"):
                 send_valid=1;
                 log( "issue trigger received")
-                if(data_json["user"]["username"] in lab_members):
-                    receiver_dingUid = lab_members[data_json["user"]["username"]]#to author
-                    log("author "+data_json["user"]["username"]+" get.")
                 if("assignees" in data_json):
                     if("username" in data_json["assignees"][0]):
                         if(data_json["assignees"][0]["username"] in lab_members):
-                            receiver_dingUid = receiver_dingUid + "|" + lab_members[data_json["assignees"][0]["username"]]#to assignee
+                            receiver_dingUid.append(lab_members[data_json["assignees"][0]["username"]])#to assignee
                             log("assignee "+data_json["assignees"][0]["username"]+" get.")
                 issue_url = data_json["object_attributes"]["url"]
                 log(issue_url)
                 issue_title = data_json["object_attributes"]["title"]
                 issue_id = str(data_json["object_attributes"]["iid"])
                 issue_content = data_json['object_attributes']['description']
-                issue_content_dict = issue_content.split()
-                for content in issue_content_dict:
-                    if (content[0]=="@"):
-                        for key in lab_members.keys():
-                            if (content[1:]==key):
-                                receiver_dingUid = receiver_dingUid+"|"+lab_members[key]#to at
-                                log("at "+key+" get.")
+                if issue_content != None:
+                    receiver_dingUid = searchAt(receiver_dingUid,issue_content)
                 project_name = data_json['project']['name']
     
     
-                if receiver_dingUid==None :
+                if len(receiver_dingUid)==0 :
                     send_valid = 0
                 else:
-                    receiver_dingUid = receiverSort(receiver_dingUid)
+                    receiver_dingUid_str = receiverSort(receiver_dingUid)
                     msg2dingapi_json_str=(
-                    "{\"touser\": \""+receiver_dingUid+"\", \"agentid\": \""+AgentID+"\","
+                    "{\"touser\": \""+receiver_dingUid_str+"\", \"agentid\": \""+AgentID+"\","
                     "\"msgtype\": \"markdown\","
                     "\"markdown\": {\"title\": \"issue#"+issue_id+"通知\","
                     "\"text\": \"## 和你相关的issue#"+issue_id+"通知 \\n"
@@ -287,14 +302,10 @@ class gitlab2dingsvr_RequestHandler(BaseHTTPRequestHandler):
             elif (data_json['object_kind'] == "merge_request"):
                 send_valid=1;
                 log( data_json['object_kind']+" trigger received")
-                author_labusername = labuid2username(str(data_json["object_attributes"]["author_id"]))
-                if(author_labusername in lab_members):
-                    receiver_dingUid = lab_members[author_labusername]#to author
-                    log("author "+author_labusername+" get.")
                 if("assignee" in data_json):
                     if("username" in data_json["assignee"]):
                         if(data_json["assignee"]["username"] in lab_members):
-                            receiver_dingUid = receiver_dingUid + "|" + lab_members[data_json["assignee"]["username"]]#to assignee
+                            receiver_dingUid.append(lab_members[data_json["assignee"]["username"]])#to assignee
                             log("assignee "+data_json["assignee"]["username"]+" get.")
                 object_url = data_json["object_attributes"]["url"]
                 log(object_url)
@@ -302,22 +313,17 @@ class gitlab2dingsvr_RequestHandler(BaseHTTPRequestHandler):
                 merge_req_id = str(data_json["object_attributes"]["iid"])
     
                 merge_req_content = data_json['object_attributes']['description']
-                merge_req_content_dict = merge_req_content.split()
-                for content in merge_req_content_dict:
-                    if (content[0]=="@"):
-                        for key in lab_members.keys():
-                            if (content[1:]==key):
-                                receiver_dingUid = receiver_dingUid+"|"+lab_members[key]#to at
-                                log("at "+key+" get.")
+                if merge_req_content != None:
+                    receiver_dingUid = searchAt(receiver_dingUid,merge_req_content)
                 project_name = data_json['project']['name']
     
     
-                if receiver_dingUid==None :
+                if len(receiver_dingUid)==0 :
                     send_valid = 0
                 else:
-                    receiver_dingUid = receiverSort(receiver_dingUid)
+                    receiver_dingUid_str = receiverSort(receiver_dingUid)
                     msg2dingapi_json_str=(
-                    "{\"touser\": \""+receiver_dingUid+"\", \"agentid\": \""+AgentID+"\","
+                    "{\"touser\": \""+receiver_dingUid_str+"\", \"agentid\": \""+AgentID+"\","
                     "\"msgtype\": \"markdown\","
                     "\"markdown\": {\"title\": \"MergeRequest#"+merge_req_id+"通知\","
                     "\"text\": \"## 和你相关的MergeRequest#"+merge_req_id+"通知 \\n"
@@ -340,51 +346,43 @@ class gitlab2dingsvr_RequestHandler(BaseHTTPRequestHandler):
                  ■   ■■    ■■    ■■■ ■   ■■■             ■■    ■■■■   ■   ■    ■  ■   ■    ■   ■■■   ■    ■    ■                     
         
                 issue comment object: new comment, at, edit
-                msg to: comment author, at, issue author and assignee
+                msg to: comment author, at and assignee
                 '''
             elif (data_json['object_kind'] == "note") and (data_json['object_attributes']['noteable_type'] == "Issue") :
                 send_valid=1;
                 log( data_json['object_attributes']['noteable_type'] +" comment trigger received")
-                if(data_json["user"]["username"] in lab_members):
-                    receiver_dingUid = lab_members[data_json["user"]["username"]]
-                    log("comment author "+data_json["user"]["username"]+" get.")
     
                 comment_url = data_json["object_attributes"]["url"]
                 log(comment_url)
                 comment_content = data_json['object_attributes']['note']
-                content_dict = comment_content.split()
-                for content in content_dict:
-                    if (content[0]=="@"):
-                        for key in lab_members.keys():
-                            if (content[1:]==key):
-                                receiver_dingUid = receiver_dingUid+"|"+lab_members[key]
-                                log("at "+key+" get.")
+                if comment_content != None:
+                    receiver_dingUid = searchAt(receiver_dingUid,comment_content)
     
                 # content above are same in object kind NOTE (comment) 
     
                 issue_author_id = str(data_json["issue"]["author_id"])
                 issue_author = labuid2username(issue_author_id)
                 if(issue_author in lab_members):
-                    receiver_dingUid = receiver_dingUid+"|"+lab_members[issue_author]
+                    receiver_dingUid.append(lab_members[issue_author])
                     log("issue author "+issue_author+" get.")
     
                 if data_json["issue"]["assignee_id"] !=  None :
                     issue_assignee_id = str(data_json["issue"]["assignee_id"])
                     issue_assignee = labuid2username(issue_assignee_id)
                     if(issue_assignee in lab_members):
-                        receiver_dingUid = receiver_dingUid+"|"+lab_members[issue_assignee]
+                        receiver_dingUid.append(lab_members[issue_assignee])
                         log("issue assignee "+issue_assignee+" get.")
                 issue_id = str(data_json["issue"]["iid"])
                 issue_title = str(data_json["issue"]["title"])
     
                 project_name = data_json['project']['name']
     
-                if receiver_dingUid==None :
+                if len(receiver_dingUid)==0 :
                     send_valid = 0
                 else:
-                    receiver_dingUid = receiverSort(receiver_dingUid)
+                    receiver_dingUid_str = receiverSort(receiver_dingUid)
                     msg2dingapi_json_str=(
-                    "{\"touser\": \""+receiver_dingUid+"\", \"agentid\": \""+AgentID+"\","
+                    "{\"touser\": \""+receiver_dingUid_str+"\", \"agentid\": \""+AgentID+"\","
                     "\"msgtype\": \"markdown\","
                     "\"markdown\": {\"title\": \"issue#"+issue_id+"评论通知\","
                     "\"text\": \"## 和你相关的issue#"+issue_id+"评论 \\n"
@@ -407,42 +405,34 @@ class gitlab2dingsvr_RequestHandler(BaseHTTPRequestHandler):
                    ■■    ■■■■   ■   ■    ■  ■   ■    ■  ■    ■■             ■■    ■■■■   ■   ■    ■  ■   ■    ■   ■■■   ■    ■    ■■              
                                                                                                                                               
                 commit comment object: new comment, at, edit
-                msg to: comment author, at, commit author
+                msg to: comment author, at
                 '''
             elif (data_json['object_kind'] == "note") and (data_json['object_attributes']['noteable_type'] == "Commit") :
                 send_valid=1;
                 log( data_json['object_attributes']['noteable_type'] +" comment trigger received")
-                if(data_json["user"]["username"] in lab_members):
-                    receiver_dingUid = lab_members[data_json["user"]["username"]]
-                    log("comment author "+data_json["user"]["username"]+" get.")
     
                 comment_url = data_json["object_attributes"]["url"]
                 log(comment_url)
                 comment_content = data_json['object_attributes']['note']
-                content_dict = comment_content.split()
-                for content in content_dict:
-                    if (content[0]=="@"):
-                        for key in lab_members.keys():
-                            if (content[1:]==key):
-                                receiver_dingUid = receiver_dingUid+"|"+lab_members[key]
-                                log("at "+key+" get.")
+                if comment_content != None:
+                    receiver_dingUid = searchAt(receiver_dingUid,comment_content)
     
                 # content above are same in object kind NOTE (comment) 
     
                 commit_author_email = data_json["commit"]["author"]["email"]
                 if(commit_author_email in git_members):
-                    receiver_dingUid = receiver_dingUid+"|"+git_members[commit_author_email]
+                    receiver_dingUid.append(git_members[commit_author_email])
                     log("commit author "+commit_author_email+" get.")
     
                 commit_msg = data_json['commit']['message']
                 project_name = data_json['project']['name']
     
-                if receiver_dingUid==None :
+                if len(receiver_dingUid)==0 :
                     send_valid = 0
                 else:
-                    receiver_dingUid = receiverSort(receiver_dingUid)
+                    receiver_dingUid_str = receiverSort(receiver_dingUid)
                     msg2dingapi_json_str=(
-                    "{\"touser\": \""+receiver_dingUid+"\", \"agentid\": \""+AgentID+"\","
+                    "{\"touser\": \""+receiver_dingUid_str+"\", \"agentid\": \""+AgentID+"\","
                     "\"msgtype\": \"markdown\","
                     "\"markdown\": {\"title\": \"commit评论通知\","
                     "\"text\": \"## 和你相关的commit评论 \\n"
@@ -480,51 +470,41 @@ class gitlab2dingsvr_RequestHandler(BaseHTTPRequestHandler):
                         ■■    ■■■■   ■   ■    ■  ■   ■    ■   ■■■   ■    ■    ■■              
                                                           
                 merge request comment object: new comment, at, edit
-                msg to: comment author, at, merge requester, merge assignee
+                msg to: comment author, at, merge assignee
                 '''
             elif (data_json['object_kind'] == "note") and (data_json['object_attributes']['noteable_type'] == "MergeRequest") :
                 send_valid=1;
-                log( data_json['object_attributes']['noteable_type'] +" comment trigger received")
-                author_labusername = labuid2username(str(data_json["object_attributes"]["author_id"]))
-                if(author_labusername in lab_members):
-                    receiver_dingUid = lab_members[author_labusername]#to author
-                    log("author "+author_labusername+" get.")
-    
+                log( data_json['object_attributes']['noteable_type'] +" comment trigger received")    
                 comment_url = data_json["object_attributes"]["url"]
                 log(comment_url)
                 comment_content = data_json['object_attributes']['note']
-                content_dict = comment_content.split()
-                for content in content_dict:
-                    if (content[0]=="@"):
-                        for key in lab_members.keys():
-                            if (content[1:]==key):
-                                receiver_dingUid = receiver_dingUid+"|"+lab_members[key]
-                                log("at "+key+" get.")
+                if comment_content != None:
+                    receiver_dingUid = searchAt(receiver_dingUid,comment_content)
     
                 # content above are same in object kind NOTE (comment) 
     
                 req_author_id = str(data_json["merge_request"]["author_id"])
                 req_author = labuid2username(req_author_id)
                 if(req_author in lab_members):
-                    receiver_dingUid = receiver_dingUid+"|"+lab_members[req_author]
+                    receiver_dingUid.append(lab_members[req_author])
                     log("MergeRequest author "+req_author+" get.")
     
                 if data_json["merge_request"]["assignee_id"] !=  None :
                     req_assignee_id = str(data_json["merge_request"]["assignee_id"])
                     req_assignee = labuid2username(req_assignee_id)
                     if(req_assignee in lab_members):
-                        receiver_dingUid = receiver_dingUid+"|"+lab_members[req_assignee]
+                        receiver_dingUid.append(lab_members[req_assignee])
                         log("MergeRequest assignee "+req_assignee+" get.")
     
                 merge_req_title = data_json['merge_request']['title']
                 project_name = data_json['project']['name']
     
-                if receiver_dingUid==None :
+                if len(receiver_dingUid)==0 :
                     send_valid = 0
                 else:
-                    receiver_dingUid = receiverSort(receiver_dingUid)
+                    receiver_dingUid_str = receiverSort(receiver_dingUid)
                     msg2dingapi_json_str=(
-                    "{\"touser\": \""+receiver_dingUid+"\", \"agentid\": \""+AgentID+"\","
+                    "{\"touser\": \""+receiver_dingUid_str+"\", \"agentid\": \""+AgentID+"\","
                     "\"msgtype\": \"markdown\","
                     "\"markdown\": {\"title\": \"MergeRequest通知\","
                     "\"text\": \"## 和你相关的MergeRequest评论 \\n"
@@ -552,7 +532,7 @@ class gitlab2dingsvr_RequestHandler(BaseHTTPRequestHandler):
                 recognized object, have msg to send
                 '''
             if (send_valid == 1):
-                send_valid =0;
+                send_valid =0
                 req_dingapi = request.Request("https://oapi.dingtalk.com/gettoken?corpid="+corpid+"&corpsecret="+corpsecret)
                 data_from_dingapi = request.urlopen(req_dingapi).read()
                 data_for_access_token = json.loads(data_from_dingapi.decode("utf-8"))
@@ -659,11 +639,41 @@ class gitlab2dingsvr_RequestHandler(BaseHTTPRequestHandler):
                         git_members = read_list_from_db("git_members")
                         lab_members = read_list_from_db("lab_members")
                     else:
-                        response_text = "User not found.\n"
-                        log( "cannot find user : "+method_get_req_dict["mobile"])
+                        response_text = "User not found, or already linked.\n"
+                        log( "cannot find unlinked user : "+method_get_req_dict["mobile"])
+                elif method_get_req_dict["action"] == "linkfront":
+                    response_text = '''
+<!DOCTYPE html>
+<html>
+<meta charset="utf-8">
+<body>
+<p>关联钉钉账号</p>
+<p>根据自己实际情况修改相应字段：</p>
+
+<form action="{0}" method="GET">
+action:(默认为linkuser，无需改动)<br>
+<input type="text" name="action" value="linkuser">
+<br>
+mobile： 必须。你的钉钉注册手机号。<br>
+<input type="text" name="mobile">
+<br>
+username： 必须。你在Gitlab上的Username（你登录时所用的用户名，显示在点开右上角头像后第二行@开头的字段）<br>
+<input type="text" name="username">
+<br>
+email： 可选。你在git提交中使用的email（如果你不是代码开发者，则不需要填写)<br>
+<input type="text" name="email">
+<br>
+<br>
+<input type="submit" value="Submit">
+</form> 
+
+</body>
+</html>
+'''.format(webhookurl)
                 else:
                     response_text = "error: action error"
                     log( "error: action error: "+method_get_req_dict["action"])
+
             else: # no action param in request
                 response_text = "error: no action."
                 log( "error: no action param.")
